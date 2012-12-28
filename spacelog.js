@@ -4,20 +4,19 @@
 // and forward it along
 
 var Jog = require('Jog');
-var log = Jog(new Jog.FileStore('/tmp/tail')); 
-var id = 0;
-
 var WebSocket = require('ws');
-var server = '10.0.1.11';
-// var ws = {};
-var ws = new WebSocket("ws://"+server+":9000");
 
-var sbName = "spacelog";
+var fileName = "tail";
+var logId = 0;
 
-var myConfig = {
+var sb = {};
+    sb.server = 'test';
+    sb.name = "spacelog";
+    sb.desc = "This will log incoming data to a file called /tmp/tail for later use.";
+    sb.config = {
   "config": {
-    "name": sbName,
-    "description": "This will log incoming data to a file called /tmp/tail for later use.",
+    "name": sb.name,
+    "description": sb.desc,
     "publish": {
       "messages": [
       ]
@@ -41,27 +40,52 @@ var myConfig = {
   }
 };
 
-ws.onopen = function() {
-  console.log("WebSockets connection opened");
-  // send my config
-  ws.send(JSON.stringify(myConfig));
+if (process.argv.length > 2) {
+  for ( var i = 2; i < process.argv.length; i ++ ) {
+    var expression = /([-a-zA-Z]+)=([-a-zA-Z0-9\.]+)/;
+    var m = process.argv[i].match(expression);
+    if (m) {
+      if (m[1] == "server") { 
+        sb.server = m[2];
+        console.log("set server hostname: " + sb.server);
+      }
+      else if (m[1] == "name") {
+        sb.name = m[2];
+        console.log("set app name: " + sb.name);
+      }
+      else if (m[1] == "file") {
+        fileName = m[2];
+        console.log("set file name: " + fileName);
+      }
+    }
+  }
 }
 
-ws.onmessage = function(e) {
+var filepath = path.resolve(__dirname, (fileName + '.dat'));
+var log = Jog(new Jog.FileStore(filepath)); 
+    sb.conn = new WebSocket("ws://"+sb.server+":9000");  
+
+sb.conn.onopen = function() {
+  console.log("WebSockets connection opened");
+  // send my config
+  sb.conn.send(JSON.stringify(sb.config));
+}
+
+sb.conn.onmessage = function(e) {
     console.log("Got WebSockets message: " + e.data);
     var tMsg = JSON.parse(e.data);
     var tName = tMsg.message.name;
     var tType = tMsg.message.type;
     var tValue = tMsg.message.value;
-    log.info( { id: ++id, user: sbName, name: tName, sbtype: tType, value: tValue } );
+    log.info( { logId: ++logId, user: sb.name, name: tName, sbtype: tType, value: tValue } );
 
 }
 
-ws.onclose = function() {
+sb.conn.onclose = function() {
     console.log("WebSockets connection closed");
 }
 
-ws.onerror = function(e) {
+sb.conn.onerror = function(e) {
   console.log("onerror ", e);
 
 }
@@ -72,4 +96,9 @@ log.stream({ end: false, interval: 500 })
     console.log(obj);
   });
 
+sb.conn.on("error", function(error) {
+  // When the "error" event is emitted, this is called
+  console.log("+++++++ ERROR +++++++");
+  console.error(error);
+});
 
